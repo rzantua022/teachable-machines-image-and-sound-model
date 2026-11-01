@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Upload a photo or use your camera and see which finger an image model thinks it is.">
+  <meta name="theme-color" content="#E9E4D9">
+  <title>Finger Identifier</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232F5D50'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23E9E4D9' stroke-width='3'/%3E%3C/svg%3E">
+
+  <!-- Fonts. If they fail to load, the page falls back to Georgia and Arial. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600&family=Young+Serif&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Teachable Machine / TensorFlow.js. Keep these two above script.js. -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+  <script defer src="script.js"></script>
+</head>
+<body id="top">
+  <a class="skip-link" href="#classifier">Skip to the identifier</a>
+
+  <header class="site-header">
+    <div class="bar">
+      <a class="wordmark" href="#top">Finger Identifier</a>
+      <nav aria-label="Main">
+        <a href="#classifier">Identify</a>
+        <a href="#about">About</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="classifier" id="classifier" aria-labelledby="classifierTitle">
+      <div class="section-head">
+        <h1 id="classifierTitle">Which finger is this?</h1>
+        <p class="status"><i id="statusDot" aria-hidden="true"></i><span id="modelStatus">Model not loaded</span></p>
+      </div>
+      <p class="lede">Upload a photo or use your camera. The model tells you whether it sees a thumb, pointer, middle finger, ring finger or pinky.</p>
+
+      <div class="workbench">
+        <!-- Input -->
+        <div class="input-pane">
+          <div class="pane-head" role="tablist" aria-label="Input method">
+            <button class="input-tab active" id="uploadTab" type="button" role="tab" aria-selected="true">Upload a photo</button>
+            <button class="input-tab" id="webcamTab" type="button" role="tab" aria-selected="false">Use the camera</button>
+          </div>
+
+          <div class="stage">
+            <label class="dropzone" id="dropzone" for="imageInput">
+              <input id="imageInput" type="file" accept="image/*">
+              <strong>Drop a photo of a finger here</strong>
+              <span>or <u>choose a file</u> from your device</span>
+              <small>JPG, PNG or WebP</small>
+            </label>
+
+            <div class="preview-wrap" id="previewWrap" hidden>
+              <img id="preview" alt="The photo you selected">
+              <button class="overlay-button" id="changeImage" type="button">Change photo</button>
+            </div>
+
+            <div class="webcam-wrap" id="webcamWrap" hidden>
+              <div id="webcamContainer" class="webcam-screen"></div>
+              <span class="live-badge" id="liveBadge" hidden>Live</span>
+            </div>
+          </div>
+
+          <div class="controls" id="uploadActions">
+            <button class="button button-primary" id="predictButton" type="button" disabled>Classify photo</button>
+            <button class="button button-secondary" id="resetButton" type="button">Reset</button>
+          </div>
+
+          <div class="controls" id="cameraActions" hidden>
+            <button class="button button-primary" id="startCameraButton" type="button">Start camera</button>
+            <button class="button button-secondary" id="stopCameraButton" type="button" disabled>Stop camera</button>
+          </div>
+
+          <p class="status-line" id="inputMessage" role="status">Add your exported Teachable Machine model to the <code>model</code> folder to get started.</p>
+        </div>
+
+        <!-- Results -->
+        <div class="results-pane">
+          <div class="pane-head">
+            <h3 class="pane-title">Result</h3>
+          </div>
+
+          <div class="empty-result" id="emptyResult">
+            <p class="empty-title">No finger identified yet</p>
+            <p>Add a photo or start the camera and hold up one finger. The model's guesses will appear here, each with a confidence score.</p>
+          </div>
+
+          <div class="prediction-results" id="predictionResults" hidden>
+            <div class="best">
+              <p class="best-label">Best match</p>
+              <p class="best-name" id="bestName"></p>
+              <p class="best-meta"><span id="bestPercent"></span> confidence</p>
+              <p class="best-note" id="lowNote" hidden>The model isn't sure. Show a single finger against a plain background in good light.</p>
+            </div>
+            <ul class="prediction-list" id="predictionList"></ul>
+          </div>
+
+          <p class="disclaimer">For the best result, show one finger at a time, close to the camera, in good light. Angle and background change the result.</p>
+          <p class="visually-hidden" id="srStatus" role="status"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="about" id="about" aria-labelledby="aboutTitle">
+      <h2 id="aboutTitle">About this project</h2>
+      <dl class="about-list">
+        <div>
+          <dt>What it recognises</dt>
+          <dd>Five classes: thumb, pointer, middle finger, ring finger and pinky.</dd>
+        </div>
+        <div>
+          <dt>How it's built</dt>
+          <dd>An image model trained with Google Teachable Machine, running in your browser with TensorFlow.js.</dd>
+        </div>
+        <div>
+          <dt>Your images</dt>
+          <dd>Photos and camera frames are processed on your device. Nothing is uploaded to a server.</dd>
+        </div>
+        <div>
+          <dt>Limits</dt>
+          <dd>The model only knows those five classes. It always picks one, even when there's no finger in the picture or several are showing, so check the confidence before trusting a result.</dd>
+        </div>
+        <!--
+          EDIT: add your own row here. For example, how you collected the
+          training photos and how many you took for each finger.
+          <div>
+            <dt>Training</dt>
+            <dd>Your text here.</dd>
+          </div>
+        -->
+      </dl>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="bar">
+      <p>A project by Ranel Zantua</p>
+      <p><a href="https://rzantua022.github.io/My-Portfolio/">Back to portfolio</a></p>
+    </div>
+  </footer>
+</body>
+</html>
