@@ -191,11 +191,14 @@ async function loadSoundModel() {
     if (typeof speechCommands === "undefined") {
       throw new Error("The sound library did not load. Check your internet connection.");
     }
+    // The sound library only accepts full http(s) URLs, not relative paths,
+    // so turn ./models/sound/ into an absolute URL based on this page.
+    const soundFolder = new URL(SOUND_MODEL_FOLDER, document.baseURI).href;
     const recognizer = speechCommands.create(
       "BROWSER_FFT",
       undefined,
-      `${SOUND_MODEL_FOLDER}model.json`,
-      `${SOUND_MODEL_FOLDER}metadata.json`
+      `${soundFolder}model.json`,
+      `${soundFolder}metadata.json`
     );
     await recognizer.ensureModelLoaded();
     soundRecognizer = recognizer;
