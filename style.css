@@ -1,5 +1,5 @@
 /*
-  Finger Identifier
+  Image and Sound Classifier
 
   To re-theme the site, change the variables in :root.
   Everything else reads from them.
@@ -98,6 +98,31 @@ nav a:hover { color: var(--ink); text-decoration: underline; text-underline-offs
   margin-inline: auto;
   padding: clamp(32px, 5vw, 56px) 0 clamp(64px, 9vw, 104px);
 }
+/* Switch between the image model and the sound model */
+.model-switch {
+  display: inline-flex;
+  margin-bottom: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.switch-option {
+  min-height: 44px;
+  padding: 10px 20px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: .9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.switch-option + .switch-option { border-left: 1px solid var(--line-strong); }
+.switch-option:hover:not(.active) { background: rgba(42, 39, 34, .06); }
+.switch-option.active { background: var(--ink); color: var(--sheet); }
+.switch-option:focus-visible { outline-offset: -3px; }
+
 .section-head {
   display: flex;
   align-items: baseline;
@@ -202,7 +227,7 @@ h1, h2 {
 }
 .dropzone:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.preview-wrap, .webcam-wrap { position: absolute; inset: 0; }
+.preview-wrap, .webcam-wrap, .sound-wrap { position: absolute; inset: 0; }
 .preview-wrap { display: flex; align-items: center; justify-content: center; }
 .preview-wrap img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
 .overlay-button {
@@ -221,6 +246,16 @@ h1, h2 {
 .webcam-screen { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
 .webcam-screen:empty::before { content: "Camera is off"; font-size: .9375rem; color: var(--muted); }
 .webcam-screen canvas { display: block; width: 100%; height: 100%; object-fit: cover; }
+.sound-wrap canvas { display: block; width: 100%; height: 100%; }
+.sound-idle {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .9375rem;
+  color: var(--muted);
+}
 .live-badge {
   position: absolute;
   left: 10px; top: 10px;
@@ -320,6 +355,8 @@ h1, h2 {
   .about-list { margin-top: 24px; }
 }
 @media (max-width: 560px) {
+  .model-switch { display: flex; width: 100%; }
+  .switch-option { flex: 1; padding: 10px 8px; line-height: 1.3; }
   .workbench { --pad: 18px; }
   .pane-head { gap: 18px; }
   .section-head { flex-direction: column; align-items: flex-start; gap: 6px; }
