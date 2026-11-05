@@ -3,174 +3,93 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Two Teachable Machine models in one page: identify a finger from a photo or camera, or an animal from its sound.">
-  <meta name="theme-color" content="#E9E4D9">
-  <title>Image and Sound Classifier</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232F5D50'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23E9E4D9' stroke-width='3'/%3E%3C/svg%3E">
+  <meta name="description" content="Identify fingers from a photo or camera, and animals from their sound, with two Teachable Machine models.">
+  <meta name="theme-color" content="#F0EEE9">
+  <title>Teachable Machines</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%231C1B19'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23F0EEE9'/%3E%3C/svg%3E">
 
-  <!-- Fonts. If they fail to load, the page falls back to Georgia and Arial. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600&family=Young+Serif&display=swap" rel="stylesheet">
-
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 
-  <!--
-    Teachable Machine libraries. Keep these three above script.js.
-    The image model needs the first two, the sound model needs the first and third.
-  -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
   <script defer src="script.js"></script>
 </head>
-<body id="top">
-  <a class="skip-link" href="#classifier">Skip to the classifier</a>
+<body>
+  <a class="skip-link" href="#tool">Skip to the tool</a>
 
-  <header class="site-header">
-    <div class="bar">
-      <a class="wordmark" href="#top">Image and Sound Classifier</a>
-      <nav aria-label="Main">
-        <a href="#classifier">Classify</a>
-        <a href="#about">About</a>
-      </nav>
-    </div>
+  <header class="page">
+    <h1 class="site-name">Teachable Machines</h1>
   </header>
 
-  <main>
-    <section class="classifier" id="classifier" aria-labelledby="classifierTitle">
-      <div class="model-switch" role="tablist" aria-label="Choose a model">
-        <button class="switch-option active" id="imageModelTab" type="button" role="tab" aria-selected="true">Image model: fingers</button>
-        <button class="switch-option" id="soundModelTab" type="button" role="tab" aria-selected="false">Sound model: animals</button>
+  <main class="page">
+    <div class="models" role="tablist" aria-label="Model">
+      <button class="model" id="imageModelTab" type="button" role="tab" aria-selected="true" aria-controls="tool">Fingers</button>
+      <button class="model" id="soundModelTab" type="button" role="tab" aria-selected="false" aria-controls="tool">Animals</button>
+    </div>
+
+    <div class="tool" id="tool">
+      <div class="input">
+        <div class="methods" id="methods" role="tablist" aria-label="Input">
+          <button class="method" id="uploadTab" type="button" role="tab" aria-selected="true">Photo</button>
+          <button class="method" id="webcamTab" type="button" role="tab" aria-selected="false">Camera</button>
+        </div>
+
+        <div class="stage">
+          <label class="dropzone" id="dropzone" for="imageInput">
+            <input id="imageInput" type="file" accept="image/*">
+            <strong>Choose a photo</strong>
+            <span>or drop one here</span>
+          </label>
+
+          <div class="preview-wrap" id="previewWrap" hidden>
+            <img id="preview" alt="The photo you chose">
+          </div>
+
+          <div class="webcam-wrap" id="webcamWrap" hidden>
+            <div class="webcam-screen" id="webcamContainer"></div>
+          </div>
+
+          <div class="sound-wrap" id="soundWrap" hidden>
+            <p id="soundState">Microphone is off</p>
+          </div>
+        </div>
+
+        <div class="controls" id="uploadActions" hidden>
+          <button class="button button-secondary" id="changeImage" type="button">Choose another photo</button>
+        </div>
+
+        <div class="controls" id="cameraActions" hidden>
+          <button class="button button-primary" id="startCameraButton" type="button">Start camera</button>
+          <button class="button button-secondary" id="stopCameraButton" type="button" disabled>Stop camera</button>
+        </div>
+
+        <div class="controls" id="soundActions" hidden>
+          <button class="button button-primary" id="startSoundButton" type="button">Start listening</button>
+          <button class="button button-secondary" id="stopSoundButton" type="button" disabled>Stop listening</button>
+        </div>
+
+        <p class="status" id="status" role="status"></p>
       </div>
 
-      <div class="section-head">
-        <h1 id="classifierTitle">Which finger is this?</h1>
-        <p class="status"><i id="statusDot" aria-hidden="true"></i><span id="modelStatus">Model not loaded</span></p>
+      <div class="results">
+        <p class="hint" id="emptyText"></p>
+        <div id="predictionResults" hidden>
+          <p class="low" id="lowNote" hidden>Not very sure</p>
+          <ul class="prediction-list" id="predictionList"></ul>
+        </div>
+        <p class="visually-hidden" id="srStatus" role="status"></p>
       </div>
-      <p class="lede" id="lede">Upload a photo or use your camera. The model tells you whether it sees a thumb, pointer, middle finger, ring finger or pinky.</p>
+    </div>
 
-      <div class="workbench">
-        <!-- Input -->
-        <div class="input-pane">
-          <div class="pane-head" id="imageHead" role="tablist" aria-label="Input method">
-            <button class="input-tab active" id="uploadTab" type="button" role="tab" aria-selected="true">Upload a photo</button>
-            <button class="input-tab" id="webcamTab" type="button" role="tab" aria-selected="false">Use the camera</button>
-          </div>
-          <div class="pane-head" id="soundHead" hidden>
-            <h3 class="pane-title">Use the microphone</h3>
-          </div>
-
-          <div class="stage">
-            <label class="dropzone" id="dropzone" for="imageInput">
-              <input id="imageInput" type="file" accept="image/*">
-              <strong>Drop a photo of a finger here</strong>
-              <span>or <u>choose a file</u> from your device</span>
-              <small>JPG, PNG or WebP</small>
-            </label>
-
-            <div class="preview-wrap" id="previewWrap" hidden>
-              <img id="preview" alt="The photo you selected">
-              <button class="overlay-button" id="changeImage" type="button">Change photo</button>
-            </div>
-
-            <div class="webcam-wrap" id="webcamWrap" hidden>
-              <div id="webcamContainer" class="webcam-screen"></div>
-              <span class="live-badge" id="liveBadge" hidden>Live</span>
-            </div>
-
-            <div class="sound-wrap" id="soundWrap" hidden>
-              <canvas id="spectrogram" aria-label="What the microphone is hearing, drawn as a spectrogram" role="img"></canvas>
-              <p class="sound-idle" id="soundIdle">Microphone is off</p>
-              <span class="live-badge" id="soundBadge" hidden>Listening</span>
-            </div>
-          </div>
-
-          <div class="controls" id="uploadActions">
-            <button class="button button-primary" id="predictButton" type="button" disabled>Classify photo</button>
-            <button class="button button-secondary" id="resetButton" type="button">Reset</button>
-          </div>
-
-          <div class="controls" id="cameraActions" hidden>
-            <button class="button button-primary" id="startCameraButton" type="button">Start camera</button>
-            <button class="button button-secondary" id="stopCameraButton" type="button" disabled>Stop camera</button>
-          </div>
-
-          <div class="controls" id="soundActions" hidden>
-            <button class="button button-primary" id="startSoundButton" type="button">Start listening</button>
-            <button class="button button-secondary" id="stopSoundButton" type="button" disabled>Stop listening</button>
-          </div>
-
-          <p class="status-line" id="inputMessage" role="status">Waiting for the model to load.</p>
-        </div>
-
-        <!-- Results -->
-        <div class="results-pane">
-          <div class="pane-head">
-            <h3 class="pane-title">Result</h3>
-          </div>
-
-          <div class="empty-result" id="emptyResult">
-            <p class="empty-title" id="emptyTitle">No finger identified yet</p>
-            <p id="emptyText">Add a photo or start the camera and hold up one finger. The model's guesses will appear here, each with a confidence score.</p>
-          </div>
-
-          <div class="prediction-results" id="predictionResults" hidden>
-            <div class="best">
-              <p class="best-label">Best match</p>
-              <p class="best-name" id="bestName"></p>
-              <p class="best-meta"><span id="bestPercent"></span> confidence</p>
-              <p class="best-note" id="lowNote" hidden>The model isn't sure. Show a single finger against a plain background in good light.</p>
-            </div>
-            <ul class="prediction-list" id="predictionList"></ul>
-          </div>
-
-          <p class="disclaimer" id="tip">For the best result, show one finger at a time, close to the camera, in good light. Angle and background change the result.</p>
-          <p class="visually-hidden" id="srStatus" role="status"></p>
-        </div>
-      </div>
-    </section>
-
-    <section class="about" id="about" aria-labelledby="aboutTitle">
-      <h2 id="aboutTitle">About this project</h2>
-      <dl class="about-list">
-        <div>
-          <dt>Image model</dt>
-          <dd>Recognises five fingers from a photo or the camera: thumb, pointer, middle finger, ring finger and pinky.</dd>
-        </div>
-        <div>
-          <dt>Sound model</dt>
-          <dd>Listens through the microphone and recognises eight animals: cat, cow, dog, duck, owl, pig, sheep and tuko. It also has a class for background noise.</dd>
-        </div>
-        <div>
-          <dt>How it's built</dt>
-          <dd>Both models were trained with Google Teachable Machine and run in your browser with TensorFlow.js.</dd>
-        </div>
-        <div>
-          <dt>Your data</dt>
-          <dd>Photos, camera frames and microphone audio are processed on your device. Nothing is uploaded to a server.</dd>
-        </div>
-        <div>
-          <dt>Limits</dt>
-          <dd>Each model only knows its own classes. It always picks one, even when none of them fit, so check the confidence before trusting a result.</dd>
-        </div>
-        <!--
-          EDIT: add your own row here. For example, how you collected the
-          training photos and recordings.
-          <div>
-            <dt>Training</dt>
-            <dd>Your text here.</dd>
-          </div>
-        -->
-      </dl>
+    <section class="about">
+      <h2>About</h2>
+      <p>Two models trained with Google Teachable Machine. They run in your browser, so photos, camera frames and audio stay on your device. Each model only knows its own classes and always picks one, even when none of them fit.</p>
     </section>
   </main>
 
-  <footer class="site-footer">
-    <div class="bar">
-      <p>A project by Ranel Zantua</p>
-      <p><a href="https://rzantua022.github.io/My-Portfolio/">Back to portfolio</a></p>
-    </div>
-  </footer>
 </body>
 </html>

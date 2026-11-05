@@ -1,89 +1,51 @@
-// Two Teachable Machine models on one page:
-//   image: fingers, from an uploaded photo or the live camera
+// Two Teachable Machine models:
+//   image: fingers, from a photo or the live camera
 //   sound: animals, from the microphone
-// Relative paths, so it works on GitHub Pages.
-const IMAGE_MODEL_FOLDERS = ["./models/image/", "./model/"];
-const SOUND_MODEL_FOLDER = "./models/sound/";
+const IMAGE_MODEL_FOLDER = "./image-model/";
+const SOUND_MODEL_FOLDER = "./audio-model/";
 
-// Below this confidence the result panel adds a "not sure" note.
+// Below this confidence the results show "Not very sure".
 const LOW_CONFIDENCE = 0.6;
 
-// Text that changes with the selected model.
-const COPY = {
-  image: {
-    title: "Which finger is this?",
-    lede: "Upload a photo or use your camera. The model tells you whether it sees a thumb, pointer, middle finger, ring finger or pinky.",
-    emptyTitle: "No finger identified yet",
-    emptyText: "Add a photo or start the camera and hold up one finger. The model's guesses will appear here, each with a confidence score.",
-    lowNote: "The model isn't sure. Show a single finger against a plain background in good light.",
-    tip: "For the best result, show one finger at a time, close to the camera, in good light. Angle and background change the result."
-  },
-  sound: {
-    title: "Which animal is this?",
-    lede: "Use your microphone. Play or make an animal sound near it, and the model tells you whether it hears a cat, cow, dog, duck, owl, pig, sheep or tuko.",
-    emptyTitle: "No animal heard yet",
-    emptyText: "Start listening and play an animal sound near your microphone. The model's guesses will appear here, each with a confidence score.",
-    lowNote: "The model isn't sure. Play one sound at a time, closer to the microphone, with less other noise.",
-    tip: "For the best result, play one sound at a time, close to the microphone, with little other noise. Speakers and rooms change how a sound comes across."
-  }
-};
+const LOADING = "Loading model…";
 
 const imageInput = document.getElementById("imageInput");
 const preview = document.getElementById("preview");
 const previewWrap = document.getElementById("previewWrap");
 const dropzone = document.getElementById("dropzone");
-const predictButton = document.getElementById("predictButton");
-const resetButton = document.getElementById("resetButton");
 const changeImage = document.getElementById("changeImage");
-const modelStatus = document.getElementById("modelStatus");
-const statusDot = document.getElementById("statusDot");
-const inputMessage = document.getElementById("inputMessage");
-const emptyResult = document.getElementById("emptyResult");
-const emptyTitle = document.getElementById("emptyTitle");
+const statusLine = document.getElementById("status");
 const emptyText = document.getElementById("emptyText");
 const predictionResults = document.getElementById("predictionResults");
 const predictionList = document.getElementById("predictionList");
-const bestName = document.getElementById("bestName");
-const bestPercent = document.getElementById("bestPercent");
 const lowNote = document.getElementById("lowNote");
-const tip = document.getElementById("tip");
 const srStatus = document.getElementById("srStatus");
-const pageTitle = document.getElementById("classifierTitle");
-const lede = document.getElementById("lede");
 
 const imageModelTab = document.getElementById("imageModelTab");
 const soundModelTab = document.getElementById("soundModelTab");
-const imageHead = document.getElementById("imageHead");
-const soundHead = document.getElementById("soundHead");
-
+const methods = document.getElementById("methods");
 const uploadTab = document.getElementById("uploadTab");
 const webcamTab = document.getElementById("webcamTab");
+
 const webcamWrap = document.getElementById("webcamWrap");
 const webcamContainer = document.getElementById("webcamContainer");
-const liveBadge = document.getElementById("liveBadge");
 const startCameraButton = document.getElementById("startCameraButton");
 const stopCameraButton = document.getElementById("stopCameraButton");
 const uploadActions = document.getElementById("uploadActions");
 const cameraActions = document.getElementById("cameraActions");
 
 const soundWrap = document.getElementById("soundWrap");
-const spectrogram = document.getElementById("spectrogram");
-const soundIdle = document.getElementById("soundIdle");
-const soundBadge = document.getElementById("soundBadge");
+const soundState = document.getElementById("soundState");
 const soundActions = document.getElementById("soundActions");
 const startSoundButton = document.getElementById("startSoundButton");
 const stopSoundButton = document.getElementById("stopSoundButton");
 
-// Camera messages use the same status line as everything else.
-const cameraNote = inputMessage;
-
-// Which model is showing, and how each one is doing.
 let activeModel = "image";
 const modelState = { image: "loading", sound: "idle" }; // idle, loading, ready, failed
 
 // Image model
 let model = null;
-let modelFailed = false;
+let imageLabels = [];
 let imageReady = false;
 let currentObjectUrl = null;
 let webcam = null;
@@ -92,14 +54,17 @@ let activeInput = "upload";
 let animationFrameId = null;
 let predictionBusy = false;
 
-// Bumped every time the camera is stopped. Lets startCamera() notice that the
-// user left while the permission prompt was still open.
+// Bumped whenever the camera stops, so startCamera() can tell the user left
+// while the permission prompt was still open.
 let startToken = 0;
+
+// Bumped whenever results are cleared, so a slow photo prediction can't show
+// up after the user has moved on.
+let classifyToken = 0;
 
 // Sound model
 let soundRecognizer = null;
 let soundLabels = [];
-let soundFailed = false;
 let soundListening = false;
 let soundStarting = false;
 let soundToken = 0; // same idea as startToken, for the microphone
@@ -108,76 +73,73 @@ let predictionRows = [];
 let lastAnnounced = null;
 let lastAnnouncedAt = 0;
 
-// ---- Status ----
+// ---- Status line ----
 
-function renderStatus() {
+function setStatus(text = "", isError = false) {
+  statusLine.textContent = text;
+  statusLine.classList.toggle("error", isError);
+}
+
+function showModelStatus() {
   const state = modelState[activeModel];
-  const labels = {
-    idle: "Model not loaded",
-    loading: "Loading model…",
-    ready: "Model ready",
-    failed: "Model not loaded"
-  };
-  const wrapper = statusDot.parentElement;
-  modelStatus.textContent = labels[state];
-  wrapper.classList.toggle("ready", state === "ready");
-  wrapper.classList.toggle("failed", state === "failed");
+  if (state === "loading") setStatus(LOADING);
+  else if (state === "failed") setStatus(loadFailureMessage(activeModel), true);
+  else setStatus("");
+}
+
+function loadFailureMessage(kind) {
+  if (location.protocol === "file:") {
+    return "Open this page from a local server, not as a file.";
+  }
+  const folder = kind === "image" ? "image-model" : "audio-model";
+  const name = kind === "image" ? "image" : "audio";
+  return `Couldn't load the ${name} model. Check the ${folder} folder.`;
 }
 
 function displayName(name) {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-// ---- Image model ----
-
-async function loadFromFolders() {
-  let lastError = null;
-  for (const folder of IMAGE_MODEL_FOLDERS) {
-    try {
-      return await tmImage.load(`${folder}model.json`, `${folder}metadata.json`);
-    } catch (error) {
-      console.warn(`No image model in ${folder}`, error);
-      lastError = error;
-    }
-  }
-  throw lastError;
+function joinList(items) {
+  if (items.length < 2) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
+
+// The empty results area lists what the current model can recognise.
+function renderHint() {
+  const labels = activeModel === "image"
+    ? imageLabels
+    : soundLabels.filter((label) => !/^background/i.test(label));
+  emptyText.textContent = labels.length
+    ? `Recognises ${joinList(labels.map((label) => label.toLowerCase()))}.`
+    : "";
+}
+
+// ---- Image model ----
 
 async function loadModel() {
   modelState.image = "loading";
-  renderStatus();
+  if (activeModel === "image") showModelStatus();
   try {
     if (typeof tmImage === "undefined") {
       throw new Error("The Teachable Machine library did not load. Check your internet connection.");
     }
-    model = await loadFromFolders();
+    model = await tmImage.load(
+      `${IMAGE_MODEL_FOLDER}model.json`,
+      `${IMAGE_MODEL_FOLDER}metadata.json`
+    );
+    imageLabels = model.getClassLabels();
     modelState.image = "ready";
-    renderStatus();
-    if (activeModel === "image" && activeInput === "upload") {
-      inputMessage.textContent = "Model loaded. Choose a photo of a finger or use your camera.";
+    if (activeModel === "image") {
+      showModelStatus();
+      renderHint();
+      if (activeInput === "upload" && imageReady && predictionResults.hidden) classifyPhoto();
     }
-    updateButton();
   } catch (error) {
     console.error("Could not load the image model:", error);
-    modelFailed = true;
     modelState.image = "failed";
-    renderStatus();
-    if (activeModel === "image") {
-      inputMessage.textContent = loadFailureMessage("image");
-    }
+    if (activeModel === "image") showModelStatus();
   }
-}
-
-function loadFailureMessage(kind) {
-  if (location.protocol === "file:") {
-    return "Open this page through a web server (VS Code Live Server, or python -m http.server). Double-clicking index.html can't load the model.";
-  }
-  const folder = kind === "image" ? "models/image" : "models/sound";
-  return `Couldn't load the ${kind} model. Put model.json, metadata.json and weights.bin in the ${folder} folder, then reload. Press F12 and open Console for details.`;
-}
-
-function updateButton() {
-  predictButton.disabled = !(model && imageReady && activeInput === "upload");
 }
 
 // ---- Sound model ----
@@ -185,20 +147,18 @@ function updateButton() {
 async function loadSoundModel() {
   if (soundRecognizer || modelState.sound === "loading") return;
   modelState.sound = "loading";
-  soundFailed = false;
-  renderStatus();
+  if (activeModel === "sound") showModelStatus();
   try {
     if (typeof speechCommands === "undefined") {
       throw new Error("The sound library did not load. Check your internet connection.");
     }
-    // The sound library only accepts full http(s) URLs, not relative paths,
-    // so turn ./models/sound/ into an absolute URL based on this page.
-    const soundFolder = new URL(SOUND_MODEL_FOLDER, document.baseURI).href;
+    // The sound library only accepts full http(s) URLs, not relative paths.
+    const folder = new URL(SOUND_MODEL_FOLDER, document.baseURI).href;
     const recognizer = speechCommands.create(
       "BROWSER_FFT",
       undefined,
-      `${soundFolder}model.json`,
-      `${soundFolder}metadata.json`
+      `${folder}model.json`,
+      `${folder}metadata.json`
     );
     await recognizer.ensureModelLoaded();
     soundRecognizer = recognizer;
@@ -206,19 +166,12 @@ async function loadSoundModel() {
     modelState.sound = "ready";
   } catch (error) {
     console.error("Could not load the sound model:", error);
-    soundFailed = true;
     modelState.sound = "failed";
   }
-  renderStatus();
-  if (activeModel === "sound" && !soundListening && !soundStarting) {
-    inputMessage.textContent = soundMessage();
+  if (activeModel === "sound") {
+    if (!soundListening && !soundStarting) showModelStatus();
+    renderHint();
   }
-}
-
-function soundMessage() {
-  if (soundRecognizer) return "Press Start listening, then play an animal sound near your microphone.";
-  if (soundFailed) return loadFailureMessage("sound");
-  return "Loading the sound model…";
 }
 
 function safeStopRecognizer() {
@@ -236,19 +189,18 @@ async function startListening() {
   if (soundListening || soundStarting) return;
 
   if (!soundRecognizer) {
-    inputMessage.textContent = soundMessage();
+    showModelStatus();
     return;
   }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    inputMessage.textContent =
-      "This browser can't open the microphone here. Try a current browser over HTTPS.";
+    setStatus("This browser can't open the microphone here.", true);
     return;
   }
 
   const token = ++soundToken;
   soundStarting = true;
   startSoundButton.disabled = true;
-  inputMessage.textContent = "Waiting for microphone permission…";
+  setStatus("Waiting for microphone permission…");
 
   try {
     await soundRecognizer.listen(
@@ -257,7 +209,6 @@ async function startListening() {
         handleSound(result);
       },
       {
-        includeSpectrogram: true,
         probabilityThreshold: 0.75,
         invokeCallbackOnNoiseAndUnknown: true,
         overlapFactor: 0.5
@@ -271,16 +222,15 @@ async function startListening() {
     }
 
     soundListening = true;
-    soundIdle.hidden = true;
-    soundBadge.hidden = false;
+    soundState.textContent = "Listening";
     stopSoundButton.disabled = false;
-    inputMessage.textContent = "Listening. The result updates as you make sounds.";
+    setStatus("");
   } catch (error) {
     console.error("Could not start the microphone:", error);
     safeStopRecognizer();
     if (token !== soundToken) return;
     startSoundButton.disabled = false;
-    inputMessage.textContent = mediaErrorMessage(error, "microphone", "Start listening");
+    setStatus(mediaErrorMessage(error, "microphone"), true);
   } finally {
     soundStarting = false;
   }
@@ -290,59 +240,16 @@ function stopListening() {
   soundToken++;
   soundListening = false;
   safeStopRecognizer();
-  soundBadge.hidden = true;
-  soundIdle.hidden = false;
-  clearSpectrogram();
+  soundState.textContent = "Microphone is off";
   startSoundButton.disabled = false;
   stopSoundButton.disabled = true;
-  inputMessage.textContent = "Stopped listening.";
 }
 
 function handleSound(result) {
-  const predictions = soundLabels.map((label, index) => ({
+  showPredictions(soundLabels.map((label, index) => ({
     className: label,
     probability: result.scores[index]
-  }));
-  showPredictions(predictions);
-  if (result.spectrogram) drawSpectrogram(result.spectrogram);
-}
-
-// A small picture of what the microphone is hearing. Time runs left to right,
-// low pitch at the bottom, louder is darker.
-const spectrogramContext = spectrogram.getContext("2d");
-
-function drawSpectrogram({ data, frameSize }) {
-  const frames = Math.floor(data.length / frameSize);
-  if (!frames) return;
-  if (spectrogram.width !== frames || spectrogram.height !== frameSize) {
-    spectrogram.width = frames;
-    spectrogram.height = frameSize;
-  }
-
-  let min = Infinity;
-  let max = -Infinity;
-  for (let i = 0; i < data.length; i++) {
-    if (data[i] < min) min = data[i];
-    if (data[i] > max) max = data[i];
-  }
-  const range = max - min || 1;
-
-  const image = spectrogramContext.createImageData(frames, frameSize);
-  for (let t = 0; t < frames; t++) {
-    for (let f = 0; f < frameSize; f++) {
-      const level = (data[t * frameSize + f] - min) / range;
-      const p = ((frameSize - 1 - f) * frames + t) * 4;
-      image.data[p] = 42;
-      image.data[p + 1] = 39;
-      image.data[p + 2] = 34;
-      image.data[p + 3] = Math.round(level * 255);
-    }
-  }
-  spectrogramContext.putImageData(image, 0, 0);
-}
-
-function clearSpectrogram() {
-  spectrogramContext.clearRect(0, 0, spectrogram.width, spectrogram.height);
+  })));
 }
 
 // ---- Results ----
@@ -376,11 +283,10 @@ function formatPercent(probability) {
   return (Math.round(probability * 1000) / 10).toFixed(1);
 }
 
-// The rows are built once and then updated in place. The camera and the
-// microphone call this over and over, and rebuilding the list each time would
-// make the bars flicker.
+// Rows are built once and then updated in place. The camera and microphone
+// call this over and over, and rebuilding the list each time would flicker.
 function showPredictions(predictions) {
-  emptyResult.hidden = true;
+  emptyText.hidden = true;
   predictionResults.hidden = false;
 
   if (predictionRows.length !== predictions.length) {
@@ -408,40 +314,36 @@ function showPredictions(predictions) {
   });
 
   const top = predictions[ranking[0]];
-  bestName.textContent = displayName(top.className);
-  bestPercent.textContent = `${formatPercent(top.probability)}%`;
   lowNote.hidden = top.probability >= LOW_CONFIDENCE;
-
   announce(top);
 }
 
-// Screen readers get the best match, not every update. That means only when it
-// changes, and no more than once every two seconds.
+// Screen readers hear the best match when it changes, at most every two seconds.
 function announce(top) {
   const now = Date.now();
-  const changed = top.className !== lastAnnounced;
-  if (!changed || now - lastAnnouncedAt < 2000) return;
+  if (top.className === lastAnnounced || now - lastAnnouncedAt < 2000) return;
   lastAnnounced = top.className;
   lastAnnouncedAt = now;
   srStatus.textContent =
-    `Best match: ${displayName(top.className)}, ${Math.round(top.probability * 100)} percent.`;
+    `${displayName(top.className)}, ${Math.round(top.probability * 100)} percent`;
 }
 
 function clearResults() {
+  classifyToken++;
   predictionResults.hidden = true;
   predictionList.replaceChildren();
   predictionRows = [];
-  emptyResult.hidden = false;
+  emptyText.hidden = false;
   lastAnnounced = null;
   lastAnnouncedAt = 0;
   srStatus.textContent = "";
 }
 
-// ---- Upload ----
+// ---- Photo ----
 
 function setImage(file) {
   if (!file || !file.type.startsWith("image/")) {
-    inputMessage.textContent = "That file isn't an image. Choose a JPG, PNG or WebP.";
+    setStatus("That file isn't an image.", true);
     return;
   }
 
@@ -450,21 +352,32 @@ function setImage(file) {
 
   preview.onload = () => {
     imageReady = true;
-    dropzone.hidden = true;
-    previewWrap.hidden = false;
     clearResults();
-    inputMessage.textContent = "Photo ready. Press Classify photo.";
-    updateButton();
+    selectInput("upload");
+    showModelStatus();
+    if (model) classifyPhoto();
   };
   preview.onerror = () => {
     imageReady = false;
-    inputMessage.textContent = "This photo could not be opened. Try another file.";
-    updateButton();
+    selectInput("upload");
+    setStatus("This photo couldn't be opened.", true);
   };
   preview.src = currentObjectUrl;
 }
 
-// ---- Switching between models ----
+async function classifyPhoto() {
+  const token = classifyToken;
+  try {
+    const predictions = await model.predict(preview);
+    if (token !== classifyToken) return;
+    showPredictions(predictions);
+  } catch (error) {
+    console.error("Photo prediction failed:", error);
+    if (token === classifyToken) setStatus("Couldn't classify this photo.", true);
+  }
+}
+
+// ---- Switching models and inputs ----
 
 function switchModel(kind) {
   if (kind === activeModel) return;
@@ -478,22 +391,9 @@ function switchModel(kind) {
 
 function applyModelUI() {
   const isImage = activeModel === "image";
-  const copy = COPY[activeModel];
-
-  imageModelTab.classList.toggle("active", isImage);
-  soundModelTab.classList.toggle("active", !isImage);
   imageModelTab.setAttribute("aria-selected", String(isImage));
   soundModelTab.setAttribute("aria-selected", String(!isImage));
-
-  pageTitle.textContent = copy.title;
-  lede.textContent = copy.lede;
-  emptyTitle.textContent = copy.emptyTitle;
-  emptyText.textContent = copy.emptyText;
-  lowNote.textContent = copy.lowNote;
-  tip.textContent = copy.tip;
-
-  imageHead.hidden = !isImage;
-  soundHead.hidden = isImage;
+  methods.classList.toggle("is-off", !isImage);
   soundWrap.hidden = isImage;
   soundActions.hidden = isImage;
 
@@ -505,35 +405,22 @@ function applyModelUI() {
     webcamWrap.hidden = true;
     uploadActions.hidden = true;
     cameraActions.hidden = true;
-    inputMessage.textContent = soundMessage();
   }
-  renderStatus();
+  renderHint();
+  showModelStatus();
 }
 
-// ---- Switching between upload and camera (image model only) ----
-
+// Photo or camera, image model only.
 function selectInput(mode) {
   activeInput = mode;
-  const uploadSelected = mode === "upload";
-  uploadTab.classList.toggle("active", uploadSelected);
-  webcamTab.classList.toggle("active", !uploadSelected);
-  uploadTab.setAttribute("aria-selected", String(uploadSelected));
-  webcamTab.setAttribute("aria-selected", String(!uploadSelected));
-  dropzone.hidden = !uploadSelected || imageReady;
-  previewWrap.hidden = !uploadSelected || !imageReady;
-  webcamWrap.hidden = uploadSelected;
-  uploadActions.hidden = !uploadSelected;
-  cameraActions.hidden = uploadSelected;
-  if (!uploadSelected) {
-    inputMessage.textContent = "Press Start camera to classify what it sees.";
-  } else {
-    inputMessage.textContent = model
-      ? "Choose a photo or drag one into the box."
-      : modelFailed
-        ? loadFailureMessage("image")
-        : "Waiting for the model to load.";
-  }
-  updateButton();
+  const upload = mode === "upload";
+  uploadTab.setAttribute("aria-selected", String(upload));
+  webcamTab.setAttribute("aria-selected", String(!upload));
+  dropzone.hidden = !upload || imageReady;
+  previewWrap.hidden = !upload || !imageReady;
+  webcamWrap.hidden = upload;
+  uploadActions.hidden = !upload || !imageReady;
+  cameraActions.hidden = upload;
 }
 
 function switchInput(mode) {
@@ -541,41 +428,39 @@ function switchInput(mode) {
   stopCamera();
   clearResults();
   selectInput(mode);
+  showModelStatus();
 }
 
-// ---- Camera and microphone permission errors ----
+// ---- Camera and microphone errors ----
 
-function mediaErrorMessage(error, device, action) {
+function mediaErrorMessage(error, device) {
   const name = error && error.name;
   if (!window.isSecureContext) {
-    return `The ${device} only works on a secure page. Open the site over HTTPS, or from localhost.`;
+    return `The ${device} needs a secure page. Use HTTPS or localhost.`;
   }
   if (name === "NotAllowedError" || name === "SecurityError") {
-    return `${displayName(device)} access is blocked. Allow the ${device} for this site in your browser settings, then press ${action} again.`;
+    return `${displayName(device)} access is blocked. Allow it in your browser settings, then try again.`;
   }
   if (name === "NotFoundError" || name === "OverconstrainedError") {
-    return `No ${device} was found on this device.`;
+    return `No ${device} found.`;
   }
   if (name === "NotReadableError" || name === "AbortError") {
-    return `The ${device} is being used by another app. Close it and try again.`;
+    return `The ${device} is in use by another app.`;
   }
-  return `The ${device} could not be started. Check your browser's ${device} permission and try again.`;
+  return `Couldn't start the ${device}.`;
 }
 
 // ---- Camera ----
 
 async function startCamera() {
   if (!model) {
-    cameraNote.textContent = modelFailed
-      ? "The model could not be loaded, so there is nothing to classify with yet."
-      : "The model is still loading. Try again in a moment.";
+    showModelStatus();
     return;
   }
   if (webcamRunning) return;
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    cameraNote.textContent =
-      "This browser can't open the camera here. Try a current browser over HTTPS.";
+    setStatus("This browser can't open the camera here.", true);
     return;
   }
 
@@ -583,7 +468,7 @@ async function startCamera() {
   let cam = null;
 
   try {
-    cameraNote.textContent = "Waiting for camera permission…";
+    setStatus("Waiting for camera permission…");
     startCameraButton.disabled = true;
 
     cam = new tmImage.Webcam(400, 300, true);
@@ -595,10 +480,9 @@ async function startCamera() {
     webcam = cam;
     webcamContainer.replaceChildren(webcam.canvas);
     webcamRunning = true;
-    liveBadge.hidden = false;
     startCameraButton.disabled = true;
     stopCameraButton.disabled = false;
-    cameraNote.textContent = "Camera is on. The result updates as you move.";
+    setStatus("");
     predictLoop();
   } catch (error) {
     console.error("Could not start webcam:", error);
@@ -609,7 +493,7 @@ async function startCamera() {
     webcamRunning = false;
     if (token !== startToken) return;
     startCameraButton.disabled = false;
-    cameraNote.textContent = mediaErrorMessage(error, "camera", "Start camera");
+    setStatus(mediaErrorMessage(error, "camera"), true);
   }
 }
 
@@ -626,7 +510,7 @@ async function predictLoop() {
     } catch (error) {
       console.error("Webcam prediction failed:", error);
       stopCamera();
-      cameraNote.textContent = "Classification failed, so the camera was stopped. Check the browser console.";
+      setStatus("Couldn't classify the camera image. See the console.", true);
       return;
     } finally {
       predictionBusy = false;
@@ -650,29 +534,8 @@ function stopCamera() {
   }
 
   webcamContainer.replaceChildren();
-  liveBadge.hidden = true;
   startCameraButton.disabled = false;
   stopCameraButton.disabled = true;
-  cameraNote.textContent = "Camera stopped.";
-}
-
-// ---- Reset (image model) ----
-
-function resetPage() {
-  stopCamera();
-  imageInput.value = "";
-  if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
-  currentObjectUrl = null;
-  preview.removeAttribute("src");
-  imageReady = false;
-  previewWrap.hidden = true;
-  dropzone.hidden = false;
-  clearResults();
-  selectInput("upload");
-  inputMessage.textContent = model
-    ? "Choose another photo, or switch to the camera."
-    : loadFailureMessage("image");
-  updateButton();
 }
 
 // ---- Events ----
@@ -698,23 +561,6 @@ function allowDrop(target) {
 allowDrop(dropzone);
 allowDrop(previewWrap);
 
-predictButton.addEventListener("click", async () => {
-  if (!model || !imageReady || activeInput !== "upload") return;
-  predictButton.disabled = true;
-  predictButton.textContent = "Classifying…";
-  try {
-    const predictions = await model.predict(preview);
-    showPredictions(predictions);
-    inputMessage.textContent = "Done. Try another photo to compare.";
-  } catch (error) {
-    console.error("Prediction failed:", error);
-    inputMessage.textContent = "Classification failed. Check the browser console for details.";
-  } finally {
-    predictButton.textContent = "Classify photo";
-    updateButton();
-  }
-});
-
 imageModelTab.addEventListener("click", () => switchModel("image"));
 soundModelTab.addEventListener("click", () => switchModel("sound"));
 uploadTab.addEventListener("click", () => switchInput("upload"));
@@ -723,9 +569,8 @@ startCameraButton.addEventListener("click", startCamera);
 stopCameraButton.addEventListener("click", stopCamera);
 startSoundButton.addEventListener("click", startListening);
 stopSoundButton.addEventListener("click", stopListening);
-resetButton.addEventListener("click", resetPage);
 
-// Release the camera and microphone when the page is closed or navigated away from.
+// Release the camera and microphone when the page is closed.
 window.addEventListener("pagehide", () => {
   stopCamera();
   stopListening();
